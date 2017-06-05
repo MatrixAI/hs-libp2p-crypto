@@ -4,6 +4,6 @@ with nixpkgs;
 
 haskell.lib.buildStackProject {
   name = "hs-libp2p-crypto";
-  buildInputs = [ stack cabal-install ];
+  buildInputs = [ stack cabal-install autoreconfHook ];
   inherit ghc;
 }

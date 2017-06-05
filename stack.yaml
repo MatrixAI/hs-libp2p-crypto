@@ -1,4 +1,7 @@
+flags: {}
 nix:
   enable: true
   shell-file: shell.nix
+extra-deps:
+- secp256k1-0.4.6
 resolver: lts-3.22
