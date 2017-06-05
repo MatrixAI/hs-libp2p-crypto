@@ -21,7 +21,9 @@ library
                        cryptonite,
                        secp256k1,
                        protocol-buffers,
-                       hprotoc
+                       protocol-buffers-descriptor,
+                       hprotoc,
+                       memory
   default-language:    Haskell2010
 
 test-suite hs-libp2p-crypto-test

@@ -17,10 +17,18 @@ import qualified Crypto.Secp256k1 as Secp256k1
 import qualified Data.ByteString as BSStrict
 import qualified Data.ByteString.Lazy as BSLazy
 
+import qualified Crypto.LibP2P.Protobuf as Proto
+import qualified Crypto.LibP2P.Protobuf.KeyType as ProtoKeyType
+import qualified Crypto.LibP2P.Protobuf.PublicKey as ProtoPubKey
+import qualified Crypto.LibP2P.Protobuf.PrivateKey as ProtoPrivKey
+
+import Crypto.Error (onCryptoFailure, eitherCryptoError, maybeCryptoError)
+import Text.ProtocolBuffers.WireMessage (messagePut)
+import Data.ByteArray (convert)
+
 class (Eq a) => Key a where
   toBytes :: a -> BSStrict.ByteString
 
--- wait a minute, toPublic just says that a private key can be turned into a pubkey
 class (Key a) => PrivKey a where
   sign :: a -> BSStrict.ByteString -> Either String BSStrict.ByteString
   toPublic :: (PubKey b) => a -> b
@@ -28,21 +36,51 @@ class (Key a) => PrivKey a where
 class (Key a) => PubKey a where
   verify :: a -> BSStrict.ByteString -> BSStrict.ByteString -> Bool
 
--- this all uses protobuf!!!
--- the go version does this
--- it takes the keys, and allocates new space using pb.PrivateKey type
--- this is a struct containing a Type :: *KeyType, Data :: []byte, ...
--- it assigns thetype to a &typ, which is the key type integer, it is like 0,1,2 kind of thing
--- Data is assigned to btcec (bitcoin encoded) of the key and serialized into bytestring
--- the whole thing is marshalled into the protobuf wire format
--- I don't understand how the protobuf marshalling function works with regards to the types and the message
--- I needto use the same proto file and compile a haskell version of it
+instance Key Ed25519.PublicKey where
+  toBytes k =
+    BSLazy.toStrict
+    $ messagePut
+    $ ProtoPubKey.PublicKey ProtoKeyType.Ed25519
+    $ BSLazy.fromStrict
+    $ convert k
 
--- instance Key Secp256k1.PubKey where
---   toBytes = Secp256k1.exportPubKey
+-- not sure if this requires the public key and private key at the same time
+-- the go returns always a 96 byte length byte string
+-- need an example of a valid bytes to guide this development
+instance Key Ed25519.SecretKey where
+  toBytes k =
+    BSLazy.toStrict
+    $ messagePut
+    $ ProtoPrivKey.PrivateKey ProtoKeyType.Ed25519
+    $ BSLazy.fromStrict
+    $ convert k
 
+instance PrivKey Ed25519.SecretKey where
+  sign k d = Right $ convert $ Ed25519.sign k (Ed25519.toPublic k) d
+  toPublic k = Ed25519.toPublic k
+
+instance PubKey Ed25519.PublicKey where
+  verify k d s = Ed25519.verify k d (Ed25519.signature s)
+
+-- no idea if the go implementation implements DER encoding, which this does
+-- the go implementation is also compressed, and we switch on compression here as well
+instance Key Secp256k1.PubKey where
+  toBytes k =
+    BSLazy.toStrict
+    $ messagePut
+    $ ProtoPubKey.PublicKey ProtoKeyType.Secp256k1
+    $ BSLazy.fromStrict
+    $ Secp256k1.exportPubKey True k
+
+-- this is missing some sort of bitcoin serialisation scheme in the go implementation, I don't understand what that scheme is
+-- the byte representation is a strict byte string containing a protobuf encoded type specified by the the proto file
 instance Key Secp256k1.SecKey where
-  toBytes = Secp256k1.getSecKey
+  toBytes k =
+    BSLazy.toStrict
+    $ messagePut
+    $ ProtoPrivKey.PrivateKey ProtoKeyType.Secp256k1
+    $ BSLazy.fromStrict
+    $ Secp256k1.getSecKey k
 
 
 -- data Key = PubKey PubKey | PrivKey PrivKey
