@@ -17,13 +17,16 @@ library
   hs-source-dirs:      src
   exposed-modules:     Crypto.LibP2P.Key
   build-depends:       base >= 4.7 && < 5,
+                       asn1-data,
                        bytestring,
                        cryptonite,
-                       secp256k1,
+                       hprotoc,
+                       memory,
                        protocol-buffers,
                        protocol-buffers-descriptor,
-                       hprotoc,
-                       memory
+                       sandi,
+                       secp256k1,
+                       x509
   default-language:    Haskell2010
 
 test-suite hs-libp2p-crypto-test
