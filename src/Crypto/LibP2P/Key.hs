@@ -1,3 +1,5 @@
+{-# LANGUAGE FunctionalDependencies #-}
+
 module Crypto.LibP2P.Key
   (
   ) where
@@ -15,7 +17,7 @@ import qualified Crypto.PubKey.Ed25519 as Ed25519
 import qualified Crypto.Secp256k1 as Secp256k1
 
 import qualified Data.ASN1.Encoding as ASN1Encoding
-import qualified Data.ASN1.Object as ASN1Object
+import qualified Data.ASN1.Types as ASN1Types
 import qualified Data.ByteString as BSStrict
 import qualified Data.ByteString.Base64 as Base64
 import qualified Data.ByteString.Lazy as BSLazy
@@ -26,6 +28,7 @@ import qualified Crypto.LibP2P.Protobuf.KeyType as ProtoKeyType
 import qualified Crypto.LibP2P.Protobuf.PublicKey as ProtoPubKey
 import qualified Crypto.LibP2P.Protobuf.PrivateKey as ProtoPrivKey
 
+import Control.Exception.Base (displayException)
 import Crypto.Error (onCryptoFailure, eitherCryptoError, maybeCryptoError)
 import Text.ProtocolBuffers.WireMessage (messagePut)
 import Data.ByteArray (convert)
@@ -34,9 +37,9 @@ import Data.ASN1.BinaryEncoding (DER(..))
 class (Eq a) => Key a where
   toBytes :: a -> BSStrict.ByteString
 
-class (Key a) => PrivKey a where
+class (Key a, PubKey b) => PrivKey a b | a -> b where
   sign :: a -> BSStrict.ByteString -> Either String BSStrict.ByteString
-  toPublic :: (PubKey b) => a -> b
+  toPublic :: a -> b
 
 class (Key a) => PubKey a where
   verify :: a -> BSStrict.ByteString -> BSStrict.ByteString -> Bool
@@ -60,12 +63,16 @@ instance Key Ed25519.SecretKey where
     $ BSLazy.fromStrict
     $ convert k
 
-instance PrivKey Ed25519.SecretKey where
+instance PubKey Ed25519.PublicKey where
+  verify k d s = case eitherCryptoError $ Ed25519.signature s of
+    Right s -> Ed25519.verify k d s
+    
+    -- How should we handle this exception? for now, crash
+    Left e -> error $ displayException e
+    
+instance PrivKey Ed25519.SecretKey Ed25519.PublicKey where
   sign k d = Right $ convert $ Ed25519.sign k (Ed25519.toPublic k) d
   toPublic k = Ed25519.toPublic k
-
-instance PubKey Ed25519.PublicKey where
-  verify k d s = Ed25519.verify k d (Ed25519.signature s)
 
 -- no idea if the go implementation implements DER encoding, which this does
 -- the go implementation is also compressed, and we switch on compression here as well
@@ -90,7 +97,7 @@ instance Key Secp256k1.SecKey where
 instance Key X509.PubKey where
   toBytes k =
     ASN1Encoding.encodeASN1' DER 
-    $ ASN1Object.toASN1 k
+    $ (ASN1Types.toASN1 k) []
 
 -- there is no ASN1 object representation of X509 keys at the moment,
 -- this should be implemented, necesserary for RSA PrivKeys as well

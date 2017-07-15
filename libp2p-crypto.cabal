@@ -17,7 +17,8 @@ library
   hs-source-dirs:      src
   exposed-modules:     Crypto.LibP2P.Key
   build-depends:       base >= 4.7 && < 5,
-                       asn1-data,
+                       asn1-encoding,
+                       asn1-types,
                        base64-bytestring,
                        bytestring,
                        cryptonite,
