@@ -18,6 +18,7 @@ library
   exposed-modules:     Crypto.LibP2P.Key
   build-depends:       base >= 4.7 && < 5,
                        asn1-data,
+                       base64-bytestring,
                        bytestring,
                        cryptonite,
                        hprotoc,
