@@ -3,7 +3,7 @@
 with nixpkgs;
 
 haskell.lib.buildStackProject {
-  name = "hs-libp2p-crypto";
+  name = "libp2p-crypto";
   buildInputs = [ stack cabal-install autoreconfHook ];
   inherit ghc;
 }
