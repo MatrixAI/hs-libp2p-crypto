@@ -15,7 +15,9 @@ import qualified Crypto.PubKey.Ed25519 as Ed25519
 import qualified Crypto.Secp256k1 as Secp256k1
 
 import qualified Data.ASN1.Encoding as ASN1Encoding
+import qualified Data.ASN1.Object as ASN1Object
 import qualified Data.ByteString as BSStrict
+import qualified Data.ByteString.Base64 as Base64
 import qualified Data.ByteString.Lazy as BSLazy
 import qualified Data.X509 as X509
 
@@ -27,7 +29,7 @@ import qualified Crypto.LibP2P.Protobuf.PrivateKey as ProtoPrivKey
 import Crypto.Error (onCryptoFailure, eitherCryptoError, maybeCryptoError)
 import Text.ProtocolBuffers.WireMessage (messagePut)
 import Data.ByteArray (convert)
-import Data.ASN1.BinaryEncoding (DER)
+import Data.ASN1.BinaryEncoding (DER(..))
 
 class (Eq a) => Key a where
   toBytes :: a -> BSStrict.ByteString
@@ -87,11 +89,8 @@ instance Key Secp256k1.SecKey where
 
 instance Key X509.PubKey where
   toBytes k =
-    case ASN1Encoding.encodeASN1' DER [toASN1 k] of
-      Right bs -> Base64.encode bs
-      -- what sort of behaviour should we have if we fail to convert the certificate
-      -- to ASN1? for now, just show the error
-      Left e   -> show e
+    ASN1Encoding.encodeASN1' DER 
+    $ ASN1Object.toASN1 k
 
 -- there is no ASN1 object representation of X509 keys at the moment,
 -- this should be implemented, necesserary for RSA PrivKeys as well
@@ -103,10 +102,10 @@ instance Key X509.PubKey where
 --       Right bs -> Base64.encode bs
 --       Left e   -> show e
 
-instance Key RSA.PubKey where
+instance Key RSA.PublicKey where
   toBytes k =
-  $ toBytes
-  $ X509.PubKeyRSA k
+    toBytes 
+    $ X509.PubKeyRSA k
 
 -- instance Key RSA.PrivKey where
 --   toBytes k =
