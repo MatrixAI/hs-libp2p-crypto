@@ -1,8 +1,6 @@
 {-# LANGUAGE FunctionalDependencies #-}
 
-module Crypto.LibP2P.Key
-  (
-  ) where
+module Crypto.LibP2P.Key where
 
 -- this module exposes a typeclass and instances of relevant key algos for libp2p
 -- the problem is that the modules exposing the various utilities are not very standardised
@@ -12,27 +10,29 @@ module Crypto.LibP2P.Key
 -- so we are exposing specific ways of making use of these cryptographic algos for libp2p usage
 -- also there's the usage of protobuf that we may need
 
-import qualified Crypto.PubKey.RSA as RSA
-import qualified Crypto.PubKey.Ed25519 as Ed25519
-import qualified Crypto.Secp256k1 as Secp256k1
+import qualified Crypto.PubKey.Ed25519             as Ed25519
+import qualified Crypto.PubKey.RSA                 as RSA
+import qualified Crypto.Secp256k1                  as Secp256k1
 
-import qualified Data.ASN1.Encoding as ASN1Encoding
-import qualified Data.ASN1.Types as ASN1Types
-import qualified Data.ByteString as BSStrict
-import qualified Data.ByteString.Base64 as Base64
-import qualified Data.ByteString.Lazy as BSLazy
-import qualified Data.X509 as X509
+import qualified Data.ASN1.Encoding                as ASN1Encoding
+import qualified Data.ASN1.Types                   as ASN1Types
+import qualified Data.ByteString                   as BSStrict
+import qualified Data.ByteString.Base64            as Base64
+import qualified Data.ByteString.Lazy              as BSLazy
+import qualified Data.X509                         as X509
 
-import qualified Crypto.LibP2P.Protobuf as Proto
-import qualified Crypto.LibP2P.Protobuf.KeyType as ProtoKeyType
-import qualified Crypto.LibP2P.Protobuf.PublicKey as ProtoPubKey
+import qualified Crypto.LibP2P.Protobuf            as Proto
+import qualified Crypto.LibP2P.Protobuf.KeyType    as ProtoKeyType
 import qualified Crypto.LibP2P.Protobuf.PrivateKey as ProtoPrivKey
+import qualified Crypto.LibP2P.Protobuf.PublicKey  as ProtoPubKey
 
-import Control.Exception.Base (displayException)
-import Crypto.Error (onCryptoFailure, eitherCryptoError, maybeCryptoError)
-import Text.ProtocolBuffers.WireMessage (messagePut)
-import Data.ByteArray (convert)
-import Data.ASN1.BinaryEncoding (DER(..))
+import           Control.Exception.Base            (displayException)
+import           Crypto.Error                      (eitherCryptoError,
+                                                    maybeCryptoError,
+                                                    onCryptoFailure)
+import           Data.ASN1.BinaryEncoding          (DER (..))
+import           Data.ByteArray                    (convert)
+import           Text.ProtocolBuffers.WireMessage  (messagePut)
 
 class (Eq a) => Key a where
   toBytes :: a -> BSStrict.ByteString
@@ -64,12 +64,12 @@ instance Key Ed25519.SecretKey where
     $ convert k
 
 instance PubKey Ed25519.PublicKey where
-  verify k d s = case eitherCryptoError $ Ed25519.signature s of
-    Right s -> Ed25519.verify k d s
-    
+  verify pk bytes sigb = case eitherCryptoError $ Ed25519.signature sigb of
+    Right sig -> Ed25519.verify pk bytes sig
+
     -- How should we handle this exception? for now, crash
-    Left e -> error $ displayException e
-    
+    Left e  -> error $ displayException e
+
 instance PrivKey Ed25519.SecretKey Ed25519.PublicKey where
   sign k d = Right $ convert $ Ed25519.sign k (Ed25519.toPublic k) d
   toPublic k = Ed25519.toPublic k
@@ -96,7 +96,7 @@ instance Key Secp256k1.SecKey where
 
 instance Key X509.PubKey where
   toBytes k =
-    ASN1Encoding.encodeASN1' DER 
+    ASN1Encoding.encodeASN1' DER
     $ (ASN1Types.toASN1 k) []
 
 -- there is no ASN1 object representation of X509 keys at the moment,
@@ -111,7 +111,7 @@ instance Key X509.PubKey where
 
 instance Key RSA.PublicKey where
   toBytes k =
-    toBytes 
+    toBytes
     $ X509.PubKeyRSA k
 
 -- instance Key RSA.PrivKey where
