@@ -36,6 +36,7 @@ import           Text.ProtocolBuffers.WireMessage  (messagePut)
 
 class (Eq a) => Key a where
   toBytes :: a -> BSStrict.ByteString
+  fromBytes :: BSStrict.ByteString -> Either String a
 
 class (Key a, PubKey b) => PrivKey a b | a -> b where
   sign :: a -> BSStrict.ByteString -> Either String BSStrict.ByteString
@@ -51,6 +52,7 @@ instance Key Ed25519.PublicKey where
     $ ProtoPubKey.PublicKey ProtoKeyType.Ed25519
     $ BSLazy.fromStrict
     $ convert k
+  fromBytes = undefined
 
 -- not sure if this requires the public key and private key at the same time
 -- the go returns always a 96 byte length byte string
@@ -62,6 +64,7 @@ instance Key Ed25519.SecretKey where
     $ ProtoPrivKey.PrivateKey ProtoKeyType.Ed25519
     $ BSLazy.fromStrict
     $ convert k
+  fromBytes = undefined
 
 instance PubKey Ed25519.PublicKey where
   verify pk bytes sigb = case eitherCryptoError $ Ed25519.signature sigb of
@@ -83,6 +86,7 @@ instance Key Secp256k1.PubKey where
     $ ProtoPubKey.PublicKey ProtoKeyType.Secp256k1
     $ BSLazy.fromStrict
     $ Secp256k1.exportPubKey True k
+  fromBytes = undefined
 
 -- this is missing some sort of bitcoin serialisation scheme in the go implementation, I don't understand what that scheme is
 -- the byte representation is a strict byte string containing a protobuf encoded type specified by the the proto file
@@ -93,11 +97,13 @@ instance Key Secp256k1.SecKey where
     $ ProtoPrivKey.PrivateKey ProtoKeyType.Secp256k1
     $ BSLazy.fromStrict
     $ Secp256k1.getSecKey k
+  fromBytes = undefined
 
 instance Key X509.PubKey where
   toBytes k =
     ASN1Encoding.encodeASN1' DER
     $ (ASN1Types.toASN1 k) []
+  fromBytes = undefined
 
 -- there is no ASN1 object representation of X509 keys at the moment,
 -- this should be implemented, necesserary for RSA PrivKeys as well
@@ -113,6 +119,7 @@ instance Key RSA.PublicKey where
   toBytes k =
     toBytes
     $ X509.PubKeyRSA k
+  fromBytes = undefined
 
 -- instance Key RSA.PrivKey where
 --   toBytes k =
