@@ -30,7 +30,7 @@ import           Control.Exception.Base            (displayException)
 import           Crypto.Error                      (eitherCryptoError,
                                                     maybeCryptoError,
                                                     onCryptoFailure)
-import           Data.ASN1.BinaryEncoding          (DER (..))
+import           Data.ASN1.BinaryEncoding          (BER(..), DER (..))
 import           Data.ByteArray                    (convert)
 import           Text.ProtocolBuffers.WireMessage  (messagePut)
 
@@ -99,21 +99,99 @@ instance Key Secp256k1.SecKey where
     $ Secp256k1.getSecKey k
   fromBytes = undefined
 
+-- there is no ASN1 object representation of X509 keys at the moment,
+-- this should be implemented, see
+-- see https://github.com/vincenthz/hs-certificate/issues/55
+-- https://github.com/vincenthz/hs-crypto-pubkey-types/pull/12
+--
 instance Key X509.PubKey where
   toBytes k =
     ASN1Encoding.encodeASN1' DER
     $ (ASN1Types.toASN1 k) []
+    
   fromBytes = undefined
 
--- there is no ASN1 object representation of X509 keys at the moment,
--- this should be implemented, necesserary for RSA PrivKeys as well
--- see https://github.com/vincenthz/hs-certificate/issues/55
---
 -- instance Key X509.PrivKey where
 --   toBytes k =
 --     case ASN1Encoding.encodeASN1' DER [toASN1 k] of
 --       Right bs -> Base64.encode bs
 --       Left e   -> show e
+
+-- TODO: For some reason, ASN1Object instances of RSA private key are not
+-- included in either the cryptonite library or x509 library.
+-- This is likely because the author was trying to seperate the RSA/DSA
+-- public/private keys from the serialized representation (x509/ASN1 format),
+-- but in practice has led to difficulties, since any:
+-- instance ASN1Object X509.PrivKey ... where
+-- must case match for all value constructors of the X509.PrivKey, which in turn
+-- requires instances of ASN1Object for each of those value constructors to avoid
+-- introducing a partial function. Some of these values may not have
+-- instance ASN1Object.
+--
+-- This could possibly be solved by making X509 itself a typeclass, and restricting
+-- instances of the typeclass to instances of ASN1Object only.
+-- See: the linked issues in the comment above.
+-- For now, introduce an orphan instance of ASN1Object for RSA.PrivateKey here,
+-- from the implementation in: https://git.io/v7I4b.
+--
+-- This should urgently be integrated into the cryptonite/x509 library, along with ASN1
+-- representations of other crypto keys that depend on the certificate format,
+-- as there is no way to serialize private keys that depend on x509 format without
+-- significant reimplementation.
+instance ASN1Types.ASN1Object RSA.PrivateKey where
+    toASN1 privKey = \xs -> ASN1Types.Start ASN1Types.Sequence
+                          : ASN1Types.IntVal 0
+                          : ASN1Types.IntVal (RSA.public_n $ RSA.private_pub privKey)
+                          : ASN1Types.IntVal (RSA.public_e $ RSA.private_pub privKey)
+                          : ASN1Types.IntVal (RSA.private_d privKey)
+                          : ASN1Types.IntVal (RSA.private_p privKey)
+                          : ASN1Types.IntVal (RSA.private_q privKey)
+                          : ASN1Types.IntVal (RSA.private_dP privKey)
+                          : ASN1Types.IntVal (RSA.private_dQ privKey)
+                          : ASN1Types.IntVal (fromIntegral $ RSA.private_qinv privKey)
+                          : ASN1Types.End ASN1Types.Sequence
+                          : xs
+    fromASN1 (ASN1Types.Start ASN1Types.Sequence
+             : ASN1Types.IntVal 0
+             : ASN1Types.IntVal n
+             : ASN1Types.IntVal e
+             : ASN1Types.IntVal d
+             : ASN1Types.IntVal p1
+             : ASN1Types.IntVal p2
+             : ASN1Types.IntVal pexp1
+             : ASN1Types.IntVal pexp2
+             : ASN1Types.IntVal pcoef
+             : ASN1Types.End ASN1Types.Sequence
+             : xs) = Right (privKey, xs)
+        where calculate_modulus n i = if (2 ^ (i * 8)) > n then i else calculate_modulus n (i+1)
+              privKey = RSA.PrivateKey
+                        { RSA.private_pub  = RSA.PublicKey { RSA.public_size = calculate_modulus n 1
+                                                   , RSA.public_n    = n
+                                                   , RSA.public_e    = e
+                                                   }
+                        , RSA.private_d    = d
+                        , RSA.private_p    = p1
+                        , RSA.private_q    = p2
+                        , RSA.private_dP   = pexp1
+                        , RSA.private_dQ   = pexp2
+                        , RSA.private_qinv = pcoef
+                        }
+
+    fromASN1 ( ASN1Types.Start ASN1Types.Sequence
+             : ASN1Types.IntVal 0
+             : ASN1Types.Start ASN1Types.Sequence
+             : ASN1Types.OID [1, 2, 840, 113549, 1, 1, 1]
+             : ASN1Types.Null
+             : ASN1Types.End ASN1Types.Sequence
+             : ASN1Types.OctetString bs
+             : xs
+             ) = let inner = either strError ASN1Types.fromASN1 $ ASN1Encoding.decodeASN1' BER bs
+                     strError = Left .
+                                ("fromASN1: RSA.PrivateKey: " ++) . show
+                 in either Left (\(k, _) -> Right (k, xs)) inner
+    fromASN1 _ =
+        Left "fromASN1: RSA.PrivateKey: unexpected format"
+
 
 instance Key RSA.PublicKey where
   toBytes k =
@@ -121,11 +199,16 @@ instance Key RSA.PublicKey where
     $ X509.PubKeyRSA k
   fromBytes = undefined
 
--- instance Key RSA.PrivKey where
---   toBytes k =
---   $ toBytes
---   $ X509.PrivKeyRSA k
+instance Key RSA.PrivateKey where
+  toBytes k =
+    ASN1Encoding.encodeASN1' DER
+    $ (ASN1Types.toASN1 k) []
+  fromBytes = undefined
 
+-- TODO: Instead of using a typeclass, we can use data constructors to wrap
+-- the underlying key types as documented below.
+-- Not sure which is the better design in this case?
+--
 -- data Key = PubKey PubKey | PrivKey PrivKey
 --   deriving (Eq)
 
@@ -143,5 +226,3 @@ instance Key RSA.PublicKey where
 -- toPublic (PrivRSA privKey) = PubRSA $ RSA.private_pub privKey
 -- toPublic (PrivEd25519 privKey) = PubEd25519 $ Ed25519.toPublic privKey
 -- toPublic (PrivSecp256k1 privKey) = PubSecp256k1 $ Secp256k1.derivePubKey privKey
-
--- toBytes :: Key -> BSStrict.ByteString
