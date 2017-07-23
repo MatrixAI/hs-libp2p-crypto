@@ -9,6 +9,8 @@ import qualified Data.ByteString as BS
 
 import Crypto.Error (CryptoFailable(..))
 import Crypto.LibP2P.Key
+import Crypto.LibP2P.PrivKey
+import Crypto.LibP2P.PubKey
 import Control.Monad
 import Data.Word
 import Data.Serialize.Put
@@ -73,8 +75,6 @@ prop_TestSignAndVerify _ sk bytes = verify (toPublic $ getBlind sk) (BS.pack byt
 main :: IO ()
 main = do
   quickCheck . verbose $ prop_TestSignAndVerify (KeyT :: KeyT Ed25519.SecretKey)
-  quickCheck . verbose $ prop_TestSignAndVerify (KeyT :: KeyT RSA.PrivateKey)
-  quickCheck . verbose $ prop_TestSignAndVerify (KeyT :: KeyT Secp256k1.SecKey)
   -- sample genEd25519PubKey
   -- sample genSecp256k1PubKey
   -- sample genRSAPubKey

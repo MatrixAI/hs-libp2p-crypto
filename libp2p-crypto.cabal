@@ -15,11 +15,14 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Crypto.LibP2P.Key
+  exposed-modules:     Crypto.LibP2P.Key,
+                       Crypto.LibP2P.PrivKey,
+                       Crypto.LibP2P.PubKey
   other-modules:       Crypto.LibP2P.Protobuf,
                        Crypto.LibP2P.Protobuf.KeyType,
                        Crypto.LibP2P.Protobuf.PrivateKey,
-                       Crypto.LibP2P.Protobuf.PublicKey
+                       Crypto.LibP2P.Protobuf.PublicKey,
+                       Crypto.PubKey.RSA.Types
   build-depends:       base >= 4.7 && < 4.10,
                        asn1-encoding,
                        asn1-types,
