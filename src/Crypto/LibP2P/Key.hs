@@ -1,140 +1,193 @@
-{-# LANGUAGE FunctionalDependencies #-}
+{-|
+Module      : Crypto.LibP2P.Key
+Description : Short description
+Copyright   : (c) Roger Qiu, 2017
+License     : MIT
+Maintainer  : quoc.ho@matrix.ai
+Stability   : experimental
+Portability : POSIX
 
-module Crypto.LibP2P.Key
-  (
-  ) where
+This module provides the Key typeclass, allowing serialization to and from
+a Protobuf serialized format.
+Compare against go-libp2p-crypto/js-libp2p-crypto.
+TODO: Need to review this instance, check if the byte encodings match
+-- with the implementation in go-libp2p-crypto
+-}
+module Crypto.LibP2P.Key where
 
--- this module exposes a typeclass and instances of relevant key algos for libp2p
--- the problem is that the modules exposing the various utilities are not very standardised
--- it's because there are many ways to achieve the same thing
--- like signing for RSA means getting an optional blinder, a maybe hash algorithm, the the private key and finally the bytestring which may return an error
--- however it appears the defaults have been designed into the libp2p library, so for example the sign for rsa private key in go is using a 256 checksum of the bytestring message (should we be using lazy byte strings?) then it uses SignPKCS1v15 with a random readerm a sha256 and finally the hashed array
--- so we are exposing specific ways of making use of these cryptographic algos for libp2p usage
--- also there's the usage of protobuf that we may need
+import qualified Crypto.PubKey.Ed25519             as Ed25519
+import qualified Crypto.PubKey.RSA                 as RSA
+import qualified Crypto.Secp256k1                  as Secp256k1
 
-import qualified Crypto.PubKey.RSA as RSA
-import qualified Crypto.PubKey.Ed25519 as Ed25519
-import qualified Crypto.Secp256k1 as Secp256k1
+import qualified Data.ASN1.Encoding                as ASN1Encoding
+import qualified Data.ASN1.Types                   as ASN1Types
+import qualified Data.Bifunctor                    as Bifunctor
+import qualified Data.ByteString                   as BSStrict
+import qualified Data.ByteString.Lazy              as BSLazy
+import qualified Data.X509                         as X509
 
-import qualified Data.ASN1.Encoding as ASN1Encoding
-import qualified Data.ASN1.Types as ASN1Types
-import qualified Data.ByteString as BSStrict
-import qualified Data.ByteString.Base64 as Base64
-import qualified Data.ByteString.Lazy as BSLazy
-import qualified Data.X509 as X509
 
-import qualified Crypto.LibP2P.Protobuf as Proto
-import qualified Crypto.LibP2P.Protobuf.KeyType as ProtoKeyType
-import qualified Crypto.LibP2P.Protobuf.PublicKey as ProtoPubKey
+import qualified Crypto.LibP2P.Protobuf.KeyType    as ProtoKeyType
 import qualified Crypto.LibP2P.Protobuf.PrivateKey as ProtoPrivKey
+import qualified Crypto.LibP2P.Protobuf.PublicKey  as ProtoPubKey
 
-import Control.Exception.Base (displayException)
-import Crypto.Error (onCryptoFailure, eitherCryptoError, maybeCryptoError)
-import Text.ProtocolBuffers.WireMessage (messagePut)
-import Data.ByteArray (convert)
-import Data.ASN1.BinaryEncoding (DER(..))
+import           Crypto.Error                      (eitherCryptoError)
+import           Data.ASN1.BinaryEncoding          (DER (..))
+import           Data.ByteArray                    (convert)
+import           Text.ProtocolBuffers.WireMessage  (messageGet, messagePut)
+
+-- imports ASN1Object instance for RSA.PrivateKey
+import           Crypto.PubKey.RSA.Types           ()
+
 
 class (Eq a) => Key a where
-  toBytes :: a -> BSStrict.ByteString
-
-class (Key a, PubKey b) => PrivKey a b | a -> b where
-  sign :: a -> BSStrict.ByteString -> Either String BSStrict.ByteString
-  toPublic :: a -> b
-
-class (Key a) => PubKey a where
-  verify :: a -> BSStrict.ByteString -> BSStrict.ByteString -> Bool
+  serialize :: a -> BSStrict.ByteString
+  deserialize :: BSStrict.ByteString -> Either String a
 
 instance Key Ed25519.PublicKey where
-  toBytes k =
-    BSLazy.toStrict
-    $ messagePut
-    $ ProtoPubKey.PublicKey ProtoKeyType.Ed25519
-    $ BSLazy.fromStrict
+  serialize k =
+    encodeProtoPublic ProtoKeyType.Ed25519
     $ convert k
 
--- not sure if this requires the public key and private key at the same time
--- the go returns always a 96 byte length byte string
--- need an example of a valid bytes to guide this development
+  deserialize b = decodePublicKey b decodeEd25519Pub
+    where
+      decodeEd25519Pub :: BSStrict.ByteString -> Either String Ed25519.PublicKey
+      decodeEd25519Pub bs =
+        Bifunctor.first show
+        $ eitherCryptoError
+        $ Ed25519.publicKey bs
+
+
 instance Key Ed25519.SecretKey where
-  toBytes k =
-    BSLazy.toStrict
-    $ messagePut
-    $ ProtoPrivKey.PrivateKey ProtoKeyType.Ed25519
-    $ BSLazy.fromStrict
+  serialize k =
+    encodeProtoPublic ProtoKeyType.Ed25519
     $ convert k
 
-instance PubKey Ed25519.PublicKey where
-  verify k d s = case eitherCryptoError $ Ed25519.signature s of
-    Right s -> Ed25519.verify k d s
-    
-    -- How should we handle this exception? for now, crash
-    Left e -> error $ displayException e
-    
-instance PrivKey Ed25519.SecretKey Ed25519.PublicKey where
-  sign k d = Right $ convert $ Ed25519.sign k (Ed25519.toPublic k) d
-  toPublic k = Ed25519.toPublic k
+  deserialize b = decodePrivateKey b decodeEd25519Sec
+    where
+      decodeEd25519Sec :: BSStrict.ByteString -> Either String Ed25519.SecretKey
+      decodeEd25519Sec bs =
+        Bifunctor.first show
+        $ eitherCryptoError
+        $ Ed25519.secretKey bs
 
--- no idea if the go implementation implements DER encoding, which this does
--- the go implementation is also compressed, and we switch on compression here as well
+
 instance Key Secp256k1.PubKey where
-  toBytes k =
-    BSLazy.toStrict
-    $ messagePut
-    $ ProtoPubKey.PublicKey ProtoKeyType.Secp256k1
-    $ BSLazy.fromStrict
+  serialize k =
+    encodeProtoPublic ProtoKeyType.Secp256k1
     $ Secp256k1.exportPubKey True k
 
--- this is missing some sort of bitcoin serialisation scheme in the go implementation, I don't understand what that scheme is
--- the byte representation is a strict byte string containing a protobuf encoded type specified by the the proto file
+  deserialize b = decodePublicKey b decodeSecp256k1Pub
+    where
+      decodeSecp256k1Pub :: BSStrict.ByteString -> Either String Secp256k1.PubKey
+      decodeSecp256k1Pub bs =
+        case Secp256k1.importPubKey bs of
+             Nothing -> Left "failed to read Secp256k1.PubKey from bytestring"
+             Just pk -> Right pk
+
 instance Key Secp256k1.SecKey where
-  toBytes k =
-    BSLazy.toStrict
-    $ messagePut
-    $ ProtoPrivKey.PrivateKey ProtoKeyType.Secp256k1
-    $ BSLazy.fromStrict
+  serialize k =
+    encodeProtoPublic ProtoKeyType.Secp256k1
     $ Secp256k1.getSecKey k
 
-instance Key X509.PubKey where
-  toBytes k =
-    ASN1Encoding.encodeASN1' DER 
+  deserialize b = decodePrivateKey b decodeSecp256k1Sec
+    where
+      decodeSecp256k1Sec :: BSStrict.ByteString -> Either String Secp256k1.SecKey
+      decodeSecp256k1Sec bs =
+        case Secp256k1.secKey bs of
+             Nothing -> Left "failed to read Secp256k1.SecKey from bytestring"
+             Just pk -> Right pk
+
+-- We rely on X509 and PKIX infrastructure for the serialization of
+-- RSA public keys
+instance Key RSA.PublicKey where
+  serialize k =
+    encodeProtoPublic ProtoKeyType.RSA
+    $ ASN1Encoding.encodeASN1' DER
+    $ (ASN1Types.toASN1 $ X509.PubKeyRSA k) []
+
+  deserialize b = decodePublicKey b decodeRSAPub
+    where
+      decodeRSAPub :: BSStrict.ByteString -> Either String RSA.PublicKey
+      decodeRSAPub bs = derToAsn bs >>= asnToX509 >>= x509ToRSA
+
+      asnToX509 :: [ASN1Types.ASN1] -> Either String X509.PubKey
+      asnToX509 asn =
+        Bifunctor.second fst
+        $ ASN1Types.fromASN1 asn
+
+      x509ToRSA :: X509.PubKey -> Either String RSA.PublicKey
+      x509ToRSA (X509.PubKeyRSA k) = Right k
+      x509ToRSA _ = Left "Public key of x509 certificate was not of type RSA"
+
+-- Private Keys are serialized using the form defined in
+-- PKCS#1 v1.5. Since cryptonite doesn't export the serialization format (ASN1)
+-- at the moment, we add the orphan instance in Crypto.PubKey.RSA.Types
+-- of this library
+instance Key RSA.PrivateKey where
+  serialize k =
+    encodeProtoPrivate ProtoKeyType.RSA
+    $ ASN1Encoding.encodeASN1' DER
     $ (ASN1Types.toASN1 k) []
 
--- there is no ASN1 object representation of X509 keys at the moment,
--- this should be implemented, necesserary for RSA PrivKeys as well
--- see https://github.com/vincenthz/hs-certificate/issues/55
---
--- instance Key X509.PrivKey where
---   toBytes k =
---     case ASN1Encoding.encodeASN1' DER [toASN1 k] of
---       Right bs -> Base64.encode bs
---       Left e   -> show e
+  deserialize b = decodePrivateKey b decodeRSAPriv
+    where
+      decodeRSAPriv :: BSStrict.ByteString -> Either String RSA.PrivateKey
+      decodeRSAPriv bs = derToAsn bs >>= asnToRSA
 
-instance Key RSA.PublicKey where
-  toBytes k =
-    toBytes 
-    $ X509.PubKeyRSA k
+      asnToRSA :: [ASN1Types.ASN1] -> Either String RSA.PrivateKey
+      asnToRSA asn =
+        Bifunctor.second fst
+        $ ASN1Types.fromASN1 asn
 
--- instance Key RSA.PrivKey where
---   toBytes k =
---   $ toBytes
---   $ X509.PrivKeyRSA k
+derToAsn :: BSStrict.ByteString -> Either String [ASN1Types.ASN1]
+derToAsn bs =
+  Bifunctor.first show
+  $ ASN1Encoding.decodeASN1' DER bs
 
--- data Key = PubKey PubKey | PrivKey PrivKey
---   deriving (Eq)
+encodeProtoPublic :: ProtoKeyType.KeyType ->
+                     BSStrict.ByteString ->
+                     BSStrict.ByteString
+encodeProtoPublic kt bs =
+  BSLazy.toStrict
+  $ messagePut
+  $ ProtoPubKey.PublicKey kt
+  $ BSLazy.fromStrict bs
 
--- data PubKey = PubRSA RSA.PublicKey
---            | PubEd25519 Ed25519.PublicKey
---            | PubSecp256k1 Secp256k1.PubKey
---             deriving (Eq)
+encodeProtoPrivate ::
+                      ProtoKeyType.KeyType ->
+                      BSStrict.ByteString ->
+                      BSStrict.ByteString
+encodeProtoPrivate kt bs =
+  BSLazy.toStrict
+  $ messagePut
+  $ ProtoPrivKey.PrivateKey kt
+  $ BSLazy.fromStrict bs
 
--- data PrivKey = PrivRSA RSA.PrivateKey
---             | PrivEd25519 Ed25519.SecretKey
---             | PrivSecp256k1 Secp256k1.SecKey
---             deriving (Eq)
+-- TODO: decodeProto functions unwrap a protobuf key
+-- and returns a bytestring representing the key as bytes.
+-- There should be a better way to type this function
+-- to include maybe a constructor for a given Key a
+-- but this works for now until we can get a full stack working.
+decodePublicKey :: (Key a) =>
+                    BSStrict.ByteString ->
+                    (BSStrict.ByteString -> Either String a) ->
+                    Either String a
+decodePublicKey bs toKey = decodeProtoPublic bs >>= toKey
+  where
+    decodeProtoPublic bs =
+      Bifunctor.second (BSLazy.toStrict . ProtoPubKey.data' . fst)
+      $ messageGet
+      $ BSLazy.fromStrict bs
 
--- toPublic :: PrivKey -> PubKey
--- toPublic (PrivRSA privKey) = PubRSA $ RSA.private_pub privKey
--- toPublic (PrivEd25519 privKey) = PubEd25519 $ Ed25519.toPublic privKey
--- toPublic (PrivSecp256k1 privKey) = PubSecp256k1 $ Secp256k1.derivePubKey privKey
-
--- toBytes :: Key -> BSStrict.ByteString
+decodePrivateKey :: (Key a) =>
+                     BSStrict.ByteString ->
+                     (BSStrict.ByteString -> Either String a) ->
+                     Either String a
+decodePrivateKey bs toKey = decodeProtoPrivate bs >>= toKey
+  where
+    decodeProtoPrivate :: BSStrict.ByteString -> Either String BSStrict.ByteString
+    decodeProtoPrivate bs =
+      Bifunctor.second (BSLazy.toStrict . ProtoPrivKey.data' . fst)
+      $ messageGet
+      $ BSLazy.fromStrict bs

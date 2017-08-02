@@ -4,4 +4,5 @@ nix:
   shell-file: shell.nix
 extra-deps:
 - asn1-data-0.7.2
+- asn1-types-0.3.2
 resolver: lts-7.24
