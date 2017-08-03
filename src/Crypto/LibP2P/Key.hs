@@ -154,8 +154,7 @@ encodeProtoPublic kt bs =
   $ ProtoPubKey.PublicKey kt
   $ BSLazy.fromStrict bs
 
-encodeProtoPrivate ::
-                      ProtoKeyType.KeyType ->
+encodeProtoPrivate :: ProtoKeyType.KeyType ->
                       BSStrict.ByteString ->
                       BSStrict.ByteString
 encodeProtoPrivate kt bs =
