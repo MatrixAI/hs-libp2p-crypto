@@ -1,80 +1,120 @@
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-|
+Description : QuickCheck Tests for hs-libp2p-crypto
+Copyright   : (c) Roger Qiu, 2017
+License     : MIT
+Maintainer  : quoc.ho@matrix.ai
+Stability   : experimental
+Portability : POSIX
+-}
 
-import qualified Crypto.PubKey.RSA as RSA
+-- TODO: This module is pretty big at the moment,
+-- wonder if there is a better way to implement these QuickCheck tests
 import qualified Crypto.PubKey.Ed25519 as Ed25519
-import qualified Crypto.Secp256k1 as Secp256k1
-import qualified Data.ByteArray as BA
-import qualified Data.ByteString as BS
+import qualified Crypto.PubKey.RSA     as RSA
+import qualified Crypto.Secp256k1      as Secp256k1
+import qualified Data.ByteArray        as BA
+import qualified Data.ByteString       as BS
+import qualified Test.QuickCheck       as QC
 
+import           Control.Monad         (replicateM)
+import           Crypto.Random.Types   (MonadRandom (..))
+import           Data.Word             (Word8)
+import           Data.Proxy            (Proxy (..))
+import           Test.QuickCheck.Gen   (Gen, chooseAny)
 
-import Crypto.Error (CryptoFailable(..))
-import Crypto.LibP2P.Key
-import Crypto.LibP2P.PrivKey
-import Crypto.LibP2P.PubKey
-import Control.Monad
-import Data.Word
-import Data.Serialize.Put
-import Test.QuickCheck
-import Test.QuickCheck.Gen
+import           Crypto.LibP2P.Key
+import           Crypto.LibP2P.PrivKey
+import           Crypto.LibP2P.PubKey
 
-instance Arbitrary Ed25519.PublicKey where
-  arbitrary = do 
-    words <- replicateM 4 $ choose (minBound, maxBound)
-    let (_, rb) = runPutM $ mapM putWord64be words 
-    case Ed25519.publicKey rb of
-      CryptoFailed e -> error $ show e ++ (show rb)
-      CryptoPassed pk -> return pk
+instance MonadRandom Gen where
+  getRandomBytes n = do
+    words <- replicateM n $ (chooseAny :: Gen Word8)
+    return $ BA.pack words
 
--- Phantom type used to pass instance type info to the compiler
-data (Key a) => KeyT a = KeyT
-
-instance Arbitrary Ed25519.SecretKey where
-  arbitrary = do 
-    words <- replicateM 4 $ choose (minBound, maxBound)
-    let (_, rb) = runPutM $ mapM putWord64be words 
-    case Ed25519.secretKey rb of
-      CryptoFailed e -> error $ show e ++ (show rb)
-      CryptoPassed sk -> return sk
-
-instance Arbitrary RSA.PublicKey where
+instance QC.Arbitrary Ed25519.PublicKey where
   arbitrary = do
-    size <- elements [16,32,64,128,256,512,1024,2048,4096,8192]
-    -- these should be randomly chosen?
-    -- later versions of QuickCheck add chooseAny, but
-    -- we are currently restricted by the resolver we are running
-    -- use arbitrary for now
-    n <- arbitrary
-    e <- arbitrary
-    return $ RSA.PublicKey size n e
+    sk <- Ed25519.generateSecretKey
+    return $ Ed25519.toPublic sk
 
-genEd25519PubKey :: Gen Ed25519.PublicKey
-genEd25519PubKey = arbitrary
+instance QC.Arbitrary Ed25519.SecretKey where
+  arbitrary = do
+    sk <- Ed25519.generateSecretKey
+    return sk
 
-genEd25519PrivKey :: Gen Ed25519.PublicKey
-genEd25519PrivKey = arbitrary
+instance QC.Arbitrary RSA.PublicKey where
+  arbitrary = do
+    (pk, sk) <- RSA.generate 128 65537
+    return pk
 
-genSecp256k1PubKey :: Gen Secp256k1.PubKey
-genSecp256k1PubKey = arbitrary
+instance QC.Arbitrary RSA.PrivateKey where
+  arbitrary = do
+    (pk, sk) <- RSA.generate 128 65537
+    return sk
 
-genRSAPubKey :: Gen RSA.PublicKey
-genRSAPubKey = arbitrary
+prop_KeySignature :: (PrivKey a b, 
+                       Show a,
+                       QC.Arbitrary a) => 
+                       a -> [Word8] -> Bool
+prop_KeySignature sk bytes = 
+  case verify pk msg sig of
+       Left e  -> error e
+       Right b -> b
+  where
+    pk  = toPublic sk
+    msg = BS.pack bytes
+    sig = case sign sk msg of
+                Left e  -> error e
+                Right s -> s
 
--- Not all PrivKey types are showable, so Blind is used to wrap them
--- as QuickCheck requires showable input parameters
--- KeyT is used to have the compiler infer the PrivKey instance when it is called
-prop_TestSignAndVerify :: (PrivKey a b, Arbitrary a) => KeyT a -> Blind a -> [Word8] -> Bool
-prop_TestSignAndVerify _ sk bytes = verify (toPublic $ getBlind sk) (BS.pack bytes) sig
-                               where
-                                  sig = case sign (getBlind sk) (BS.pack bytes) of
-                                          Right bs -> bs
-                                          Left e -> error e
+prop_KeyEncoding :: (Key a, Show a, QC.Arbitrary a) => a -> Bool
+prop_KeyEncoding k = 
+  case getk2 of
+       Left e    -> error e
+       Right k2 -> k == k2
+  where
+    getk2 :: (Key a) => Either String a
+    getk2 = deserialize $ serialize k
 
---prop_TestEncode :: (Key a, PrivKey a b) => KeyT a -> Blind a -> Bool
---prop_TestEncode _ sk = (getBlind sk) == fromBytes $ toBytes $ (getBlind sk)
+class (Key a, Show a, QC.Arbitrary a) => TestKey a where
+  testKey :: Proxy a -> IO ()
+  testKey _ = do
+    QC.quickCheck
+    $ (prop_KeyEncoding :: a -> Bool) 
+
+class (PrivKey a b, Show a, QC.Arbitrary a) => TestPrivKey a b where
+  testPrivKey :: Proxy a -> IO ()
+  testPrivKey _ = do
+    QC.quickCheck
+    $ (prop_KeySignature :: a -> [Word8] -> Bool) 
+
+instance TestKey RSA.PublicKey
+instance TestKey RSA.PrivateKey
+instance TestKey Ed25519.PublicKey
+instance TestKey Ed25519.SecretKey
+instance TestKey Secp256k1.PubKey
+instance TestKey Secp256k1.SecKey
+
+instance TestPrivKey RSA.PrivateKey RSA.PublicKey
+instance TestPrivKey Ed25519.SecretKey Ed25519.PublicKey
+instance TestPrivKey Secp256k1.SecKey Secp256k1.PubKey
 
 main :: IO ()
 main = do
-  quickCheck . verbose $ prop_TestSignAndVerify (KeyT :: KeyT Ed25519.SecretKey)
-  -- sample genEd25519PubKey
-  -- sample genSecp256k1PubKey
-  -- sample genRSAPubKey
+  testKey (Proxy :: Proxy RSA.PublicKey)
+  testKey (Proxy :: Proxy RSA.PrivateKey)
+  testKey (Proxy :: Proxy Ed25519.PublicKey)
+  testKey (Proxy :: Proxy Ed25519.SecretKey)
+  testKey (Proxy :: Proxy Secp256k1.PubKey)
+  testKey (Proxy :: Proxy Secp256k1.SecKey)
+
+  testPrivKey (Proxy :: Proxy RSA.PrivateKey) 
+  testPrivKey (Proxy :: Proxy Ed25519.SecretKey)
+
+  -- TODO: Secp256k1 secret keys require a specific message type
+  -- which doesn't test well with our randomly generated bytes 
+  -- used to test message signing. Not sure how to pass in this
+  -- message type to the tests at the moment, suggestions welcome
+  --testPrivKey (Proxy :: Proxy Secp256k1.SecKey)
