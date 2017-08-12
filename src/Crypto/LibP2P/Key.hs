@@ -1,6 +1,6 @@
 {-|
 Module      : Crypto.LibP2P.Key
-Description : Short description
+Description : protobuf serialization of cryptographic keys
 Copyright   : (c) Roger Qiu, 2017
 License     : MIT
 Maintainer  : quoc.ho@matrix.ai
@@ -26,7 +26,6 @@ import qualified Data.ByteString                   as BSStrict
 import qualified Data.ByteString.Lazy              as BSLazy
 import qualified Data.X509                         as X509
 
-
 import qualified Crypto.LibP2P.Protobuf.KeyType    as ProtoKeyType
 import qualified Crypto.LibP2P.Protobuf.PrivateKey as ProtoPrivKey
 import qualified Crypto.LibP2P.Protobuf.PublicKey  as ProtoPubKey
@@ -38,7 +37,6 @@ import           Text.ProtocolBuffers.WireMessage  (messageGet, messagePut)
 
 -- imports ASN1Object instance for RSA.PrivateKey
 import           Crypto.PubKey.RSA.Types           ()
-
 
 class (Eq a) => Key a where
   serialize :: a -> BSStrict.ByteString
@@ -57,7 +55,6 @@ instance Key Ed25519.PublicKey where
         $ eitherCryptoError
         $ Ed25519.publicKey bs
 
-
 instance Key Ed25519.SecretKey where
   serialize k =
     encodeProtoPublic ProtoKeyType.Ed25519
@@ -70,7 +67,6 @@ instance Key Ed25519.SecretKey where
         Bifunctor.first show
         $ eitherCryptoError
         $ Ed25519.secretKey bs
-
 
 instance Key Secp256k1.PubKey where
   serialize k =
@@ -111,14 +107,14 @@ instance Key RSA.PublicKey where
       decodeRSAPub :: BSStrict.ByteString -> Either String RSA.PublicKey
       decodeRSAPub bs = derToAsn bs >>= asnToX509 >>= x509ToRSA
 
-      asnToX509 :: [ASN1Types.ASN1] -> Either String X509.PubKey
-      asnToX509 asn =
-        Bifunctor.second fst
-        $ ASN1Types.fromASN1 asn
+asnToX509 :: [ASN1Types.ASN1] -> Either String X509.PubKey
+asnToX509 asn =
+  Bifunctor.second fst
+  $ ASN1Types.fromASN1 asn
 
-      x509ToRSA :: X509.PubKey -> Either String RSA.PublicKey
-      x509ToRSA (X509.PubKeyRSA k) = Right k
-      x509ToRSA _ = Left "Public key of x509 certificate was not of type RSA"
+x509ToRSA :: X509.PubKey -> Either String RSA.PublicKey
+x509ToRSA (X509.PubKeyRSA k) = Right k
+x509ToRSA _ = Left "Public key of x509 certificate was not of type RSA"
 
 -- Private Keys are serialized using the form defined in
 -- PKCS#1 v1.5. Since cryptonite doesn't export the serialization format (ASN1)
@@ -170,23 +166,24 @@ encodeProtoPrivate kt bs =
 -- but this works for now until we can get a full stack working.
 decodePublicKey :: (Key a) =>
                     BSStrict.ByteString ->
-                    (BSStrict.ByteString -> Either String a) ->
+                   (BSStrict.ByteString -> Either String a) ->
                     Either String a
 decodePublicKey bs toKey = decodeProtoPublic bs >>= toKey
-  where
-    decodeProtoPublic bs =
-      Bifunctor.second (BSLazy.toStrict . ProtoPubKey.data' . fst)
-      $ messageGet
-      $ BSLazy.fromStrict bs
+
+decodeProtoPublic :: BSStrict.ByteString -> Either String BSStrict.ByteString
+decodeProtoPublic bs =
+  Bifunctor.second (BSLazy.toStrict . ProtoPubKey.data' . fst)
+  $ messageGet
+  $ BSLazy.fromStrict bs
 
 decodePrivateKey :: (Key a) =>
                      BSStrict.ByteString ->
-                     (BSStrict.ByteString -> Either String a) ->
+                    (BSStrict.ByteString -> Either String a) ->
                      Either String a
 decodePrivateKey bs toKey = decodeProtoPrivate bs >>= toKey
-  where
-    decodeProtoPrivate :: BSStrict.ByteString -> Either String BSStrict.ByteString
-    decodeProtoPrivate bs =
-      Bifunctor.second (BSLazy.toStrict . ProtoPrivKey.data' . fst)
-      $ messageGet
-      $ BSLazy.fromStrict bs
+
+decodeProtoPrivate :: BSStrict.ByteString -> Either String BSStrict.ByteString
+decodeProtoPrivate bs =
+  Bifunctor.second (BSLazy.toStrict . ProtoPrivKey.data' . fst)
+  $ messageGet
+  $ BSLazy.fromStrict bs

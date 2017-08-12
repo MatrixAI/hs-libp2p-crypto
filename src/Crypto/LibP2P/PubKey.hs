@@ -19,7 +19,6 @@ import qualified Crypto.PubKey.Ed25519            as Ed25519
 import qualified Crypto.PubKey.RSA                as RSA
 import qualified Crypto.PubKey.RSA.PKCS15         as RSAPKCS15
 import qualified Crypto.Secp256k1                 as Secp256k1
-
 import qualified Data.ByteString                  as BS
 
 import           Control.Exception.Base           (displayException)
@@ -47,7 +46,8 @@ instance PubKey Secp256k1.PubKey where
     in case mSig of
             Nothing -> Right False
             Just sig -> case mMsg of
-                             Nothing  -> Left $ "Failed to read msgb in verify"
+                             Nothing  ->
+                               Left $ "Failed to parse Secp256k1 message"
                              Just msg -> Right $ Secp256k1.verifySig pk sig msg
 
 instance PubKey RSA.PublicKey where
