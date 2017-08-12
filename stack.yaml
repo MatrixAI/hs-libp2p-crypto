@@ -4,5 +4,7 @@ nix:
   shell-file: shell.nix
 extra-deps:
 - hprotoc-2.4.2
+- haskell-src-exts-1.17.1
 - secp256k1-0.4.8
+- cryptonite-0.24
 resolver: lts-9.0
