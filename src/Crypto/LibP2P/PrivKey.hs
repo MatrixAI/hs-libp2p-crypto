@@ -22,7 +22,6 @@ import qualified Crypto.PubKey.Ed25519    as Ed25519
 import qualified Crypto.PubKey.RSA        as RSA
 import qualified Crypto.PubKey.RSA.PKCS15 as PKCS15
 import qualified Crypto.Secp256k1         as Secp256k1
-
 import qualified Data.ByteString          as BS
 
 import           Data.ByteArray           (convert)
