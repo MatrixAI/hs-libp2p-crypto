@@ -13,6 +13,8 @@ Compare against go-libp2p-crypto/js-libp2p-crypto.
 TODO: Need to review this instance, check if the byte encodings match
 -- with the implementation in go-libp2p-crypto
 -}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
 module Crypto.LibP2P.Key where
 
 import qualified Crypto.PubKey.Ed25519             as Ed25519
@@ -32,19 +34,23 @@ import qualified Crypto.LibP2P.Protobuf.PublicKey  as ProtoPubKey
 
 import           Crypto.Error                      (eitherCryptoError)
 import           Data.ASN1.BinaryEncoding          (DER (..))
-import           Data.ByteArray                    (convert)
+import           Data.ByteArray                    (ByteArrayAccess, convert)
 import           Text.ProtocolBuffers.WireMessage  (messageGet, messagePut)
 
 -- imports ASN1Object instance for RSA.PrivateKey
 import           Crypto.PubKey.RSA.Types           ()
 
+newtype SerialKey = SerialKey { unSerialKey :: BSStrict.ByteString }
+  deriving (Eq, Show, ByteArrayAccess)
+
 class (Eq a) => Key a where
-  serialize :: a -> BSStrict.ByteString
-  deserialize :: BSStrict.ByteString -> Either String a
+  serialize :: a -> SerialKey
+  deserialize :: SerialKey -> Either String a
 
 instance Key Ed25519.PublicKey where
   serialize k =
-    encodeProtoPublic ProtoKeyType.Ed25519
+    SerialKey
+    $ encodeProtoPublic ProtoKeyType.Ed25519
     $ convert k
 
   deserialize b = decodePublicKey b decodeEd25519Pub
@@ -57,7 +63,8 @@ instance Key Ed25519.PublicKey where
 
 instance Key Ed25519.SecretKey where
   serialize k =
-    encodeProtoPublic ProtoKeyType.Ed25519
+    SerialKey
+    $ encodeProtoPublic ProtoKeyType.Ed25519
     $ convert k
 
   deserialize b = decodePrivateKey b decodeEd25519Sec
@@ -70,7 +77,8 @@ instance Key Ed25519.SecretKey where
 
 instance Key Secp256k1.PubKey where
   serialize k =
-    encodeProtoPublic ProtoKeyType.Secp256k1
+    SerialKey
+    $ encodeProtoPublic ProtoKeyType.Secp256k1
     $ Secp256k1.exportPubKey True k
 
   deserialize b = decodePublicKey b decodeSecp256k1Pub
@@ -83,7 +91,8 @@ instance Key Secp256k1.PubKey where
 
 instance Key Secp256k1.SecKey where
   serialize k =
-    encodeProtoPublic ProtoKeyType.Secp256k1
+    SerialKey
+    $ encodeProtoPublic ProtoKeyType.Secp256k1
     $ Secp256k1.getSecKey k
 
   deserialize b = decodePrivateKey b decodeSecp256k1Sec
@@ -98,7 +107,8 @@ instance Key Secp256k1.SecKey where
 -- RSA public keys
 instance Key RSA.PublicKey where
   serialize k =
-    encodeProtoPublic ProtoKeyType.RSA
+    SerialKey
+    $ encodeProtoPublic ProtoKeyType.RSA
     $ ASN1Encoding.encodeASN1' DER
     $ (ASN1Types.toASN1 $ X509.PubKeyRSA k) []
 
@@ -122,7 +132,8 @@ x509ToRSA _ = Left "Public key of x509 certificate was not of type RSA"
 -- of this library
 instance Key RSA.PrivateKey where
   serialize k =
-    encodeProtoPrivate ProtoKeyType.RSA
+    SerialKey
+    $ encodeProtoPrivate ProtoKeyType.RSA
     $ ASN1Encoding.encodeASN1' DER
     $ (ASN1Types.toASN1 k) []
 
@@ -165,22 +176,22 @@ encodeProtoPrivate kt bs =
 -- to include maybe a constructor for a given Key a
 -- but this works for now until we can get a full stack working.
 decodePublicKey :: (Key a) =>
-                    BSStrict.ByteString ->
+                    SerialKey ->
                    (BSStrict.ByteString -> Either String a) ->
                     Either String a
-decodePublicKey bs toKey = decodeProtoPublic bs >>= toKey
+decodePublicKey kb toKey = decodeProtoPublic (unSerialKey kb) >>= toKey
+
+decodePrivateKey :: (Key a) =>
+                     SerialKey ->
+                    (BSStrict.ByteString -> Either String a) ->
+                     Either String a
+decodePrivateKey kb toKey = decodeProtoPrivate (unSerialKey kb) >>= toKey
 
 decodeProtoPublic :: BSStrict.ByteString -> Either String BSStrict.ByteString
 decodeProtoPublic bs =
   Bifunctor.second (BSLazy.toStrict . ProtoPubKey.data' . fst)
   $ messageGet
   $ BSLazy.fromStrict bs
-
-decodePrivateKey :: (Key a) =>
-                     BSStrict.ByteString ->
-                    (BSStrict.ByteString -> Either String a) ->
-                     Either String a
-decodePrivateKey bs toKey = decodeProtoPrivate bs >>= toKey
 
 decodeProtoPrivate :: BSStrict.ByteString -> Either String BSStrict.ByteString
 decodeProtoPrivate bs =
