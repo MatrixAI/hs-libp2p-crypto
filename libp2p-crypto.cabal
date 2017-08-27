@@ -16,8 +16,10 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   exposed-modules:     Crypto.LibP2P.Key,
+                       Crypto.LibP2P.Parse,
                        Crypto.LibP2P.PrivKey,
-                       Crypto.LibP2P.PubKey
+                       Crypto.LibP2P.PubKey,
+                       Crypto.LibP2P.Serialize
   other-modules:       Crypto.LibP2P.Protobuf,
                        Crypto.LibP2P.Protobuf.KeyType,
                        Crypto.LibP2P.Protobuf.PrivateKey,
@@ -26,6 +28,7 @@ library
   build-depends:       base >= 4.7 && < 4.10,
                        asn1-encoding,
                        asn1-types,
+                       attoparsec,
                        base64-bytestring,
                        bytestring,
                        cryptonite,
@@ -45,6 +48,7 @@ test-suite libp2p-crypto-test
   main-is:             Spec.hs
   build-depends:       base,
                        libp2p-crypto,
+                       attoparsec,
                        bytestring,
                        cereal,
                        cryptonite,

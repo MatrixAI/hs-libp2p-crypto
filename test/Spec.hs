@@ -3,31 +3,33 @@
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-|
 Description : QuickCheck Tests for hs-libp2p-crypto
-Copyright   : (c) Roger Qiu, 2017
 License     : MIT
 Maintainer  : quoc.ho@matrix.ai
 Stability   : experimental
 Portability : POSIX
+
+TODO: description
 -}
 
--- TODO: This module is pretty big at the moment,
--- wonder if there is a better way to implement these QuickCheck tests
-import qualified Crypto.PubKey.Ed25519 as Ed25519
-import qualified Crypto.PubKey.RSA     as RSA
-import qualified Crypto.Secp256k1      as Secp256k1
-import qualified Data.ByteArray        as BA
-import qualified Data.ByteString       as BS
-import qualified Test.QuickCheck       as QC
-
-import           Control.Monad         (replicateM)
-import           Crypto.Random.Types   (MonadRandom (..))
-import           Data.Proxy            (Proxy (..))
-import           Data.Word             (Word8)
-import           Test.QuickCheck.Gen   (Gen, chooseAny)
-
 import           Crypto.LibP2P.Key
-import           Crypto.LibP2P.PrivKey
+import           Crypto.LibP2P.Parse
 import           Crypto.LibP2P.PubKey
+import           Crypto.LibP2P.PrivKey
+import           Crypto.LibP2P.Serialize
+
+import qualified Crypto.PubKey.Ed25519      as Ed25519
+import qualified Crypto.PubKey.RSA          as RSA
+import qualified Crypto.Secp256k1           as Secp256k1
+import qualified Data.ByteArray             as BA
+import qualified Data.ByteString            as BS
+import qualified Test.QuickCheck            as QC
+
+import           Control.Monad              (replicateM)
+import           Crypto.Random.Types        (MonadRandom (..))
+import           Data.Proxy                 (Proxy (..))
+import           Data.Word                  (Word8)
+import           Data.Attoparsec.ByteString (IResult (..))
+import           Test.QuickCheck.Gen        (Gen, chooseAny)
 
 instance MonadRandom Gen where
   getRandomBytes n = do
@@ -54,6 +56,19 @@ instance QC.Arbitrary RSA.PrivateKey where
     (pk, sk) <- RSA.generate 128 65537
     return sk
 
+instance QC.Arbitrary Key where
+  arbitrary = do 
+    QC.oneof keys
+      where
+        keys :: [Gen Key]
+        keys = 
+          [ QC.arbitrary >>= return . makeRSAPubKey
+          , QC.arbitrary >>= return . makeRSAPrivKey ]
+          -- , QC.arbitrary >>= return . makeEd25519PubKey
+          -- , QC.arbitrary >>= return . makeEd25519PrivKey
+          -- , QC.arbitrary >>= return . makeSecp256k1PubKey
+          -- , QC.arbitrary >>= return . makeSecp256k1PrivKey ]
+
 prop_KeySignature :: (PrivKey a b,
                        Show a,
                        QC.Arbitrary a) =>
@@ -69,20 +84,13 @@ prop_KeySignature sk bytes =
                 Left e  -> error e
                 Right s -> s
 
-prop_KeyEncoding :: (Key a, Show a, QC.Arbitrary a) => a -> Bool
-prop_KeyEncoding k =
-  case getk2 of
-       Left e   -> error e
-       Right k2 -> k == k2
+prop_KeyEncoding :: Key -> Bool
+prop_KeyEncoding k = k == getk2
   where
-    getk2 :: (Key a) => Either String a
-    getk2 = deserialize $ serialize k
-
-class (Key a, Show a, QC.Arbitrary a) => TestKey a where
-  testKey :: Proxy a -> IO ()
-  testKey _ = do
-    QC.quickCheck
-    $ (prop_KeyEncoding :: a -> Bool)
+    getk2 :: Key
+    getk2 = case parseKey $ serialize k of
+                 Right k -> k
+                 _ -> error "failed"
 
 class (PrivKey a b, Show a, QC.Arbitrary a) => TestPrivKey a b where
   testPrivKey :: Proxy a -> IO ()
@@ -90,26 +98,14 @@ class (PrivKey a b, Show a, QC.Arbitrary a) => TestPrivKey a b where
     QC.quickCheck
     $ (prop_KeySignature :: a -> [Word8] -> Bool)
 
-instance TestKey RSA.PublicKey
-instance TestKey RSA.PrivateKey
-instance TestKey Ed25519.PublicKey
-instance TestKey Ed25519.SecretKey
-instance TestKey Secp256k1.PubKey
-instance TestKey Secp256k1.SecKey
-
 instance TestPrivKey RSA.PrivateKey RSA.PublicKey
 instance TestPrivKey Ed25519.SecretKey Ed25519.PublicKey
 instance TestPrivKey Secp256k1.SecKey Secp256k1.PubKey
 
 main :: IO ()
 main = do
-  testKey (Proxy :: Proxy RSA.PublicKey)
-  testKey (Proxy :: Proxy RSA.PrivateKey)
-  testKey (Proxy :: Proxy Ed25519.PublicKey)
-  testKey (Proxy :: Proxy Ed25519.SecretKey)
-  testKey (Proxy :: Proxy Secp256k1.PubKey)
-  testKey (Proxy :: Proxy Secp256k1.SecKey)
-
+  QC.quickCheck $ prop_KeyEncoding
+  
   testPrivKey (Proxy :: Proxy RSA.PrivateKey)
   testPrivKey (Proxy :: Proxy Ed25519.SecretKey)
 

@@ -14,7 +14,6 @@ commentary with @some markup@.
 -}
 module Crypto.LibP2P.PrivKey where
 
-import           Crypto.LibP2P.Key
 import           Crypto.LibP2P.PubKey
 
 import qualified Crypto.Hash.Algorithms   as Hash
@@ -26,7 +25,7 @@ import qualified Data.ByteString          as BS
 
 import           Data.ByteArray           (convert)
 
-class (Key a, PubKey b) => PrivKey a b | a -> b where
+class (PubKey b) => PrivKey a b | a -> b where
   sign :: a -> BS.ByteString -> Either String BS.ByteString
   toPublic :: a -> b
 
@@ -52,3 +51,4 @@ instance PrivKey RSA.PrivateKey RSA.PublicKey where
                   Left e    -> Left $ show e
                   Right sig -> Right sig
   toPublic k = RSA.private_pub k
+
