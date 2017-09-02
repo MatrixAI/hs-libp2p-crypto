@@ -3,9 +3,8 @@
 {-|
 Module      : Crypto.LibP2P.PrivKey
 Description : Short description
-Copyright   : (c) Roger Qiu, 2017
-License     : MIT
-Maintainer  : roger.qiu@matrix.ai
+License     : Apache-2.0
+Maintainer  : quoc.ho@matrix.ai
 Stability   : experimental
 Portability : POSIX
 

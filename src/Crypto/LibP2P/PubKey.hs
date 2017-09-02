@@ -1,8 +1,7 @@
 {-|
 Module      : Crypto.LibP2P.Key
 Description : Short description
-Copyright   : (c) Roger Qiu, 2017
-License     : MIT
+License     : Apache-2.0
 Maintainer  : quoc.ho@matrix.ai
 Stability   : experimental
 Portability : POSIX

@@ -1,7 +1,7 @@
 {-|
 Module      : Crypto.LibP2P.Parse
 Description : Parse protobuf serialized cryptographic keys to libp2p keys
-License     : MIT
+License     : Apache-2.0
 Maintainer  : quoc.ho@matrix.ai
 Stability   : experimental
 Portability : POSIX

@@ -3,7 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-|
 Description : QuickCheck Tests for hs-libp2p-crypto
-License     : MIT
+License     : Apache-2.0
 Maintainer  : quoc.ho@matrix.ai
 Stability   : experimental
 Portability : POSIX

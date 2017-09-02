@@ -1,16 +1,16 @@
 {-|
 Module      : Crypto.LibP2P.Serialize
 Description : protobuf serialization of cryptographic keys
-License     : MIT
+License     : Apache-2.0
 Maintainer  : quoc.ho@matrix.ai
 Stability   : experimental
 Portability : POSIX
 
-This module provides the Key typeclass, allowing serialization to
-a Protobuf serialized format.
-Compare against go-libp2p-crypto/js-libp2p-crypto.
+This module provides the Serial typeclass, allowing serialization to
+a Protocol Buffers format. Compare against go-libp2p-crypto/js-libp2p-crypto.
+
 TODO: Need to review this instance, check if the byte encodings match
--- with the implementation in go-libp2p-crypto
+with the implementation in go-libp2p-crypto
 -}
 module Crypto.LibP2P.Serialize where
 
