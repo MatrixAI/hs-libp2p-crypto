@@ -13,8 +13,8 @@ TODO: description
 
 import           Crypto.LibP2P.Key
 import           Crypto.LibP2P.Parse
-import           Crypto.LibP2P.PubKey
-import           Crypto.LibP2P.PrivKey
+import           Crypto.LibP2P.PublicKey
+import           Crypto.LibP2P.PrivateKey
 import           Crypto.LibP2P.Serialize
 
 import qualified Crypto.PubKey.Ed25519      as Ed25519
@@ -69,7 +69,7 @@ instance QC.Arbitrary Key where
           -- , QC.arbitrary >>= return . makeSecp256k1PubKey
           -- , QC.arbitrary >>= return . makeSecp256k1PrivKey ]
 
-prop_KeySignature :: (PrivKey a b,
+prop_KeySignature :: (PrivateKey a b,
                        Show a,
                        QC.Arbitrary a) =>
                        a -> [Word8] -> Bool
@@ -92,7 +92,7 @@ prop_KeyEncoding k = k == getk2
                  Right k -> k
                  _ -> error "failed"
 
-class (PrivKey a b, Show a, QC.Arbitrary a) => TestPrivKey a b where
+class (PrivateKey a b, Show a, QC.Arbitrary a) => TestPrivKey a b where
   testPrivKey :: Proxy a -> IO ()
   testPrivKey _ = do
     QC.quickCheck

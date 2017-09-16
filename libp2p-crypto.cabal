@@ -1,5 +1,5 @@
 name:                libp2p-crypto
-version:             0.2.0
+version:             0.3.0
 -- synopsis:
 -- description:
 homepage:            https://github.com/MatrixAI/hs-libp2p-crypto#readme
@@ -17,8 +17,8 @@ library
   hs-source-dirs:      src
   exposed-modules:     Crypto.LibP2P.Key,
                        Crypto.LibP2P.Parse,
-                       Crypto.LibP2P.PrivKey,
-                       Crypto.LibP2P.PubKey,
+                       Crypto.LibP2P.PrivateKey,
+                       Crypto.LibP2P.PublicKey,
                        Crypto.LibP2P.Serialize
   other-modules:       Crypto.LibP2P.Protobuf,
                        Crypto.LibP2P.Protobuf.KeyType,
